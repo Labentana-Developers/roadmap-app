@@ -1,0 +1,33 @@
+/* Geometria – fuente geométrica principal */
+/* Si tienes los archivos de fuente locales, descomenta y ajusta las rutas: */
+/*
+@font-face {
+  font-family: 'Geometria';
+  src: url('/fonts/Geometria.woff2') format('woff2'),
+       url('/fonts/Geometria.woff') format('woff');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Geometria';
+  src: url('/fonts/Geometria-Medium.woff2') format('woff2'),
+       url('/fonts/Geometria-Medium.woff') format('woff');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Geometria';
+  src: url('/fonts/Geometria-Bold.woff2') format('woff2'),
+       url('/fonts/Geometria-Bold.woff') format('woff');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+*/
+
+/* Fallback web-safe geométrica mientras no estén los archivos locales */
+:root {
+  --font-geometria: 'Geometria', 'Futura', 'Century Gothic', 'Trebuchet MS', ui-sans-serif, sans-serif;
+}
