@@ -417,13 +417,32 @@ export function GroupSection({
           </button>
         </div>
         <div
-          className="border-b border-border shrink-0"
+          className="border-b border-border shrink-0 relative"
           style={{
             width: totalWeeks * cellWidth,
             minWidth: totalWeeks * cellWidth,
             backgroundColor: `${group.color}0A`,
           }}
-        />
+        >
+          {group.isCollapsed && (() => {
+            const allWeeks = group.activities.flatMap((a) => a.selectedWeeks);
+            if (allWeeks.length === 0) return null;
+            const minWeek = Math.min(...allWeeks);
+            const maxWeek = Math.max(...allWeeks);
+            return (
+              <div
+                className="absolute top-1/2 -translate-y-1/2 rounded-sm"
+                style={{
+                  left: minWeek * cellWidth + 2,
+                  width: (maxWeek - minWeek + 1) * cellWidth - 4,
+                  height: 10,
+                  backgroundColor: group.color,
+                  opacity: 0.85,
+                }}
+              />
+            );
+          })()}
+        </div>
       </div>
 
       {/* Activities */}
