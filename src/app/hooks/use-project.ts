@@ -1,5 +1,5 @@
 import { addWeeks, differenceInWeeks, startOfWeek } from "date-fns";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   type ProjectState,
   type ProjectFile,
@@ -7,11 +7,60 @@ import {
   generateId,
   createDefaultProject,
 } from "../types";
+import {
+  createProjectId,
+  deleteSavedProject,
+  getLastActiveId,
+  getSavedProjects,
+  loadSavedProject,
+  saveProject,
+  setLastActiveId,
+  type SavedProjectMeta,
+} from "../lib/storage";
 
-export function useProject(initial?: ProjectState) {
-  const [project, setProject] = useState<ProjectState>(
-    initial ?? createDefaultProject
-  );
+export function useProject() {
+  // Determine initial state: try to load last active project from localStorage
+  const [activeProjectId, setActiveProjectId] = useState<string | null>(() => {
+    const lastId = getLastActiveId();
+    if (lastId && loadSavedProject(lastId)) return lastId;
+    return null;
+  });
+
+  const [project, setProject] = useState<ProjectState>(() => {
+    if (activeProjectId) {
+      const saved = loadSavedProject(activeProjectId);
+      if (saved) return projectFileToState(saved);
+    }
+    return createDefaultProject();
+  });
+
+  const [savedProjects, setSavedProjects] = useState<SavedProjectMeta[]>(getSavedProjects);
+
+  // Auto-assign an ID to a new project if it doesn't have one yet
+  useEffect(() => {
+    if (!activeProjectId) {
+      const id = createProjectId(project.projectName);
+      setActiveProjectId(id);
+      setLastActiveId(id);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // --- Auto-save with debounce ---
+  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
+
+  useEffect(() => {
+    if (!activeProjectId) return;
+
+    clearTimeout(saveTimeoutRef.current);
+    saveTimeoutRef.current = setTimeout(() => {
+      const file = stateToProjectFile(project);
+      saveProject(activeProjectId, file);
+      setLastActiveId(activeProjectId);
+      setSavedProjects(getSavedProjects());
+    }, 800);
+
+    return () => clearTimeout(saveTimeoutRef.current);
+  }, [project, activeProjectId]);
 
   // --- Group operations ---
 
@@ -275,43 +324,72 @@ export function useProject(initial?: ProjectState) {
     });
   }, []);
 
-  const resetProject = useCallback(() => {
-    setProject(createDefaultProject());
+  const createNewProject = useCallback(() => {
+    const newState = createDefaultProject();
+    const id = createProjectId(newState.projectName);
+    setProject(newState);
+    setActiveProjectId(id);
+    setLastActiveId(id);
+    // Save immediately
+    const file = stateToProjectFile(newState);
+    saveProject(id, file);
+    setSavedProjects(getSavedProjects());
   }, []);
 
+  const switchProject = useCallback((id: string) => {
+    const saved = loadSavedProject(id);
+    if (!saved) return;
+    setProject(projectFileToState(saved));
+    setActiveProjectId(id);
+    setLastActiveId(id);
+  }, []);
+
+  const deleteProject = useCallback(
+    (id: string) => {
+      deleteSavedProject(id);
+      setSavedProjects(getSavedProjects());
+      // If we deleted the active project, switch to another or create new
+      if (id === activeProjectId) {
+        const remaining = getSavedProjects();
+        if (remaining.length > 0) {
+          const first = remaining[0];
+          const saved = loadSavedProject(first.id);
+          if (saved) {
+            setProject(projectFileToState(saved));
+            setActiveProjectId(first.id);
+            setLastActiveId(first.id);
+            return;
+          }
+        }
+        // No projects left — create a fresh one
+        const newState = createDefaultProject();
+        const newId = createProjectId(newState.projectName);
+        setProject(newState);
+        setActiveProjectId(newId);
+        setLastActiveId(newId);
+      }
+    },
+    [activeProjectId]
+  );
+
   const loadProject = useCallback((file: ProjectFile) => {
-    const startDate = startOfWeek(new Date(file.startDate), { weekStartsOn: 1 });
-    setProject({
-      projectName: file.projectName,
-      startDate,
-      endDate: new Date(file.endDate),
-      groups: file.groups.map((g) => ({
-        ...g,
-        isCollapsed: g.isCollapsed ?? false,
-        id: g.id || generateId(),
-        activities: g.activities.map((a) => ({
-          ...a,
-          id: a.id || generateId(),
-        })),
-      })),
-    });
+    const state = projectFileToState(file);
+    const id = createProjectId(file.projectName);
+    setProject(state);
+    setActiveProjectId(id);
+    setLastActiveId(id);
+    saveProject(id, file);
+    setSavedProjects(getSavedProjects());
   }, []);
 
   const getProjectFile = useCallback((): ProjectFile => {
-    return {
-      version: 1,
-      projectName: project.projectName,
-      startDate: project.startDate.toISOString(),
-      endDate: project.endDate.toISOString(),
-      groups: project.groups.map(({ isCollapsed: _, ...g }) => ({
-        ...g,
-        isCollapsed: false,
-      })),
-    };
+    return stateToProjectFile(project);
   }, [project]);
 
   return {
     project,
+    activeProjectId,
+    savedProjects,
     // Group
     toggleCollapse,
     addGroup,
@@ -331,8 +409,43 @@ export function useProject(initial?: ProjectState) {
     setStartDate,
     setEndDate,
     adjustWeeks,
-    resetProject,
+    createNewProject,
+    switchProject,
+    deleteProject,
     loadProject,
     getProjectFile,
+  };
+}
+
+// --- Helpers ---
+
+function projectFileToState(file: ProjectFile): ProjectState {
+  const startDate = startOfWeek(new Date(file.startDate), { weekStartsOn: 1 });
+  return {
+    projectName: file.projectName,
+    startDate,
+    endDate: new Date(file.endDate),
+    groups: file.groups.map((g) => ({
+      ...g,
+      isCollapsed: g.isCollapsed ?? false,
+      id: g.id || generateId(),
+      activities: g.activities.map((a) => ({
+        ...a,
+        id: a.id || generateId(),
+      })),
+    })),
+  };
+}
+
+function stateToProjectFile(project: ProjectState): ProjectFile {
+  return {
+    version: 1,
+    projectName: project.projectName,
+    startDate: project.startDate.toISOString(),
+    endDate: project.endDate.toISOString(),
+    groups: project.groups.map(({ isCollapsed: _, ...g }) => ({
+      ...g,
+      isCollapsed: false,
+    })),
   };
 }

@@ -3,12 +3,13 @@ import {
   Calendar,
   ChevronLeft,
   ChevronRight,
+  Clock,
   Download,
   FolderPlus,
   GanttChart,
   LayoutTemplate,
   PencilRuler,
-  RotateCcw,
+  Plus,
   Upload,
 } from "lucide-react";
 import { useRef, useState } from "react";
@@ -17,6 +18,7 @@ import { HTML5Backend } from "react-dnd-html5-backend";
 import { RoadmapHeader } from "./components/roadmap-header";
 import { GroupSection } from "./components/group-section";
 import { SlideView } from "./components/slide-view";
+import { ProjectHistory } from "./components/project-history";
 import { useProject } from "./hooks/use-project";
 import { downloadProjectAsJson, readProjectFromFile } from "./lib/project-io";
 
@@ -26,6 +28,8 @@ const LABEL_WIDTH = 260;
 export default function App() {
   const {
     project,
+    activeProjectId,
+    savedProjects,
     toggleCollapse,
     addGroup,
     deleteGroup,
@@ -42,7 +46,9 @@ export default function App() {
     setStartDate,
     setEndDate,
     adjustWeeks,
-    resetProject,
+    createNewProject,
+    switchProject,
+    deleteProject,
     loadProject,
     getProjectFile,
   } = useProject();
@@ -56,6 +62,7 @@ export default function App() {
   const [editingProjectName, setEditingProjectName] = useState(projectName);
   const [viewMode, setViewMode] = useState<"editor" | "slide">("editor");
   const [importError, setImportError] = useState<string | null>(null);
+  const [showHistory, setShowHistory] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -86,6 +93,16 @@ export default function App() {
     }
     // Reset input so same file can be re-imported
     e.target.value = "";
+  };
+
+  const handleSelectProject = (id: string) => {
+    switchProject(id);
+    setShowHistory(false);
+  };
+
+  const handleCreateNew = () => {
+    createNewProject();
+    setShowHistory(false);
   };
 
   const totalActivities = groups.reduce((acc, g) => acc + g.activities.length, 0);
@@ -207,12 +224,26 @@ export default function App() {
 
           <div className="h-5 w-px bg-border" />
 
+          {/* History */}
+          {savedProjects.length > 1 && (
+            <button
+              onClick={() => setShowHistory(true)}
+              className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground px-2.5 py-1.5 rounded-md hover:bg-muted transition-colors"
+              title="Historial de proyectos"
+            >
+              <Clock size={13} />
+              <span className="hidden sm:inline">Historial</span>
+            </button>
+          )}
+
+          {/* New project */}
           <button
-            onClick={resetProject}
+            onClick={handleCreateNew}
             className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground px-2.5 py-1.5 rounded-md hover:bg-muted transition-colors"
+            title="Crear nuevo proyecto"
           >
-            <RotateCcw size={13} />
-            Reiniciar
+            <Plus size={13} />
+            <span className="hidden sm:inline">Nuevo</span>
           </button>
         </div>
       </div>
@@ -412,6 +443,17 @@ export default function App() {
         </div>
       </div>
       )}
+
+      {/* Project History Dialog */}
+      <ProjectHistory
+        open={showHistory}
+        onOpenChange={setShowHistory}
+        projects={savedProjects}
+        activeProjectId={activeProjectId}
+        onSelect={handleSelectProject}
+        onDelete={deleteProject}
+        onCreateNew={handleCreateNew}
+      />
     </div>
     </DndProvider>
   );
