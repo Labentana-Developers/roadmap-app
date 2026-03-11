@@ -2,6 +2,9 @@ import { Check, ChevronDown, ChevronRight, GripVertical, Plus, Trash2, X } from 
 import { useEffect, useRef, useState } from "react";
 import { useDrag, useDrop } from "react-dnd";
 import { ActivityRow } from "./activity-row";
+import type { Activity, Group } from "../types";
+
+export type { Activity, Group };
 
 const ACTIVITY_DND_TYPE = "ACTIVITY";
 
@@ -11,20 +14,6 @@ const COLOR_PALETTE = [
   "#F97316", "#EF4444", "#F43F5E", "#EC4899", "#D946EF",
   "#A855F7", "#8B5CF6", "#6366F1", "#78716C", "#64748B",
 ];
-
-export interface Activity {
-  id: string;
-  name: string;
-  selectedWeeks: number[];
-}
-
-export interface Group {
-  id: string;
-  name: string;
-  color: string;
-  isCollapsed: boolean;
-  activities: Activity[];
-}
 
 interface DragItem {
   type: string;

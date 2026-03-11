@@ -3,7 +3,7 @@ import { es } from "date-fns/locale";
 import { toPng, toBlob } from "html-to-image";
 import { Copy, Check, Download, Loader2 } from "lucide-react";
 import { useCallback, useRef, useState } from "react";
-import { type Group } from "./group-section";
+import type { Group } from "../types";
 
 interface SlideViewProps {
   groups: Group[];
@@ -154,14 +154,14 @@ export function SlideView({ groups, startDate, totalWeeks, projectName }: SlideV
 
       <div
         ref={slideRef}
-        className="bg-white rounded-xl shadow-2xl overflow-hidden"
+        className="bg-white rounded-xl shadow-2xl"
         style={{
           width: "min(calc(100vw - 4rem), 1280px)",
-          aspectRatio: "16 / 9",
+          minHeight: "calc(min(calc(100vw - 4rem), 1280px) * 9 / 16)",
           fontFamily: "var(--font-geometria)",
         }}
       >
-        <div className="flex flex-col h-full" style={{ padding: "2.5% 3%" }}>
+        <div className="flex flex-col" style={{ padding: "2.5% 3%" }}>
           <div className="flex items-start justify-between mb-[1.5%]">
             <div>
               <h1
@@ -203,7 +203,7 @@ export function SlideView({ groups, startDate, totalWeeks, projectName }: SlideV
 
           <div style={{ height: 1, background: "#E5E7EB", marginBottom: "1.2%" }} />
 
-          <div className="flex-1 flex flex-col overflow-hidden">
+          <div className="flex-1 flex flex-col">
             {/* Month header */}
             <div className="flex" style={{ marginBottom: "0.2%" }}>
               <div style={{ flexShrink: 0, width: "17%" }} />
@@ -301,7 +301,7 @@ export function SlideView({ groups, startDate, totalWeeks, projectName }: SlideV
             )}
 
             {/* Groups & activities */}
-            <div className="flex-1 flex flex-col justify-evenly overflow-hidden">
+            <div className="flex flex-col gap-[1.5%]">
               {visibleGroups.map((group, gIdx) => (
                 <div key={group.id} className="flex flex-col" style={{ marginBottom: gIdx < visibleGroups.length - 1 ? "1%" : 0 }}>
                   <div className="flex items-center" style={{ marginBottom: "0.4%", paddingRight: "1.5%", position: "relative", zIndex: 1 }}>

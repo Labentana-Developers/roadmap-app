@@ -1,287 +1,91 @@
-import { addMonths, addWeeks, differenceInWeeks, format, startOfWeek } from "date-fns";
+import { addWeeks, differenceInWeeks, format, startOfWeek } from "date-fns";
 import {
   Calendar,
   ChevronLeft,
   ChevronRight,
+  Download,
   FolderPlus,
   GanttChart,
   LayoutTemplate,
   PencilRuler,
   RotateCcw,
+  Upload,
 } from "lucide-react";
-import { useCallback, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { DndProvider } from "react-dnd";
 import { HTML5Backend } from "react-dnd-html5-backend";
 import { RoadmapHeader } from "./components/roadmap-header";
-import { GroupSection, type Group } from "./components/group-section";
+import { GroupSection } from "./components/group-section";
 import { SlideView } from "./components/slide-view";
-
-const GROUP_COLORS = [
-  "#00C853",
-  "#008C37",
-  "#08369B",
-  "#3B82F6",
-  "#10B981",
-  "#F59E0B",
-  "#EF4444",
-  "#8B5CF6",
-  "#EC4899",
-  "#06B6D4",
-];
+import { useProject } from "./hooks/use-project";
+import { downloadProjectAsJson, readProjectFromFile } from "./lib/project-io";
 
 const CELL_WIDTH = 44;
 const LABEL_WIDTH = 260;
 
-function generateId() {
-  return Math.random().toString(36).substring(2, 10);
-}
-
-const initialGroups: Group[] = [
-  {
-    id: generateId(),
-    name: "Planificación",
-    color: GROUP_COLORS[0],
-    isCollapsed: false,
-    activities: [
-      { id: generateId(), name: "Definición de alcance", selectedWeeks: [0, 1] },
-      { id: generateId(), name: "Requerimientos", selectedWeeks: [1, 2, 3] },
-      { id: generateId(), name: "Diseño técnico", selectedWeeks: [3, 4] },
-    ],
-  },
-  {
-    id: generateId(),
-    name: "Desarrollo",
-    color: GROUP_COLORS[1],
-    isCollapsed: false,
-    activities: [
-      { id: generateId(), name: "Backend API", selectedWeeks: [4, 5, 6, 7] },
-      { id: generateId(), name: "Frontend UI", selectedWeeks: [5, 6, 7, 8, 9] },
-      { id: generateId(), name: "Integración", selectedWeeks: [8, 9, 10] },
-    ],
-  },
-  {
-    id: generateId(),
-    name: "Pruebas y Lanzamiento",
-    color: GROUP_COLORS[2],
-    isCollapsed: false,
-    activities: [
-      { id: generateId(), name: "QA Testing", selectedWeeks: [10, 11] },
-      { id: generateId(), name: "UAT", selectedWeeks: [11, 12] },
-      { id: generateId(), name: "Deploy a producción", selectedWeeks: [12] },
-    ],
-  },
-];
-
 export default function App() {
-  const [groups, setGroups] = useState<Group[]>(initialGroups);
-  const [startDate, setStartDate] = useState<Date>(() => {
-    const now = new Date();
-    return startOfWeek(now, { weekStartsOn: 1 });
-  });
-  const [endDate, setEndDate] = useState<Date>(() => {
-    const now = new Date();
-    return addMonths(startOfWeek(now, { weekStartsOn: 1 }), 3);
-  });
+  const {
+    project,
+    toggleCollapse,
+    addGroup,
+    deleteGroup,
+    renameGroup,
+    changeGroupColor,
+    addActivity,
+    deleteActivity,
+    renameActivity,
+    toggleWeek,
+    rangeSelect,
+    rangeDeselect,
+    moveActivity,
+    setProjectName,
+    setStartDate,
+    setEndDate,
+    adjustWeeks,
+    resetProject,
+    loadProject,
+    getProjectFile,
+  } = useProject();
+
+  const { projectName, startDate, endDate, groups } = project;
+
+  // UI-only state
   const [newGroupName, setNewGroupName] = useState("");
   const [isAddingGroup, setIsAddingGroup] = useState(false);
-  const [projectName, setProjectName] = useState("Roadmap Planner");
   const [isEditingProjectName, setIsEditingProjectName] = useState(false);
-  const [editingProjectName, setEditingProjectName] = useState("Roadmap Planner");
+  const [editingProjectName, setEditingProjectName] = useState(projectName);
   const [viewMode, setViewMode] = useState<"editor" | "slide">("editor");
+  const [importError, setImportError] = useState<string | null>(null);
 
-  const colorIndex = useRef(groups.length % GROUP_COLORS.length);
-
-  const handleToggleCollapse = useCallback((groupId: string) => {
-    setGroups((prev) =>
-      prev.map((g) => (g.id === groupId ? { ...g, isCollapsed: !g.isCollapsed } : g))
-    );
-  }, []);
-
-  const handleAddActivity = useCallback((groupId: string, name: string) => {
-    setGroups((prev) =>
-      prev.map((g) =>
-        g.id === groupId
-          ? {
-              ...g,
-              activities: [
-                ...g.activities,
-                { id: generateId(), name, selectedWeeks: [] },
-              ],
-            }
-          : g
-      )
-    );
-  }, []);
-
-  const handleDeleteActivity = useCallback((groupId: string, activityId: string) => {
-    setGroups((prev) =>
-      prev.map((g) =>
-        g.id === groupId
-          ? { ...g, activities: g.activities.filter((a) => a.id !== activityId) }
-          : g
-      )
-    );
-  }, []);
-
-  const handleToggleWeek = useCallback((groupId: string, activityId: string, weekIndex: number) => {
-    setGroups((prev) =>
-      prev.map((g) =>
-        g.id === groupId
-          ? {
-              ...g,
-              activities: g.activities.map((a) =>
-                a.id === activityId
-                  ? {
-                      ...a,
-                      selectedWeeks: a.selectedWeeks.includes(weekIndex)
-                        ? a.selectedWeeks.filter((w) => w !== weekIndex)
-                        : [...a.selectedWeeks, weekIndex].sort((x, y) => x - y),
-                    }
-                  : a
-              ),
-            }
-          : g
-      )
-    );
-  }, []);
-
-  const handleRangeSelect = useCallback(
-    (groupId: string, activityId: string, startWeek: number, endWeek: number) => {
-      setGroups((prev) =>
-        prev.map((g) =>
-          g.id === groupId
-            ? {
-                ...g,
-                activities: g.activities.map((a) => {
-                  if (a.id !== activityId) return a;
-                  const newWeeks = new Set(a.selectedWeeks);
-                  for (let i = startWeek; i <= endWeek; i++) {
-                    newWeeks.add(i);
-                  }
-                  return {
-                    ...a,
-                    selectedWeeks: Array.from(newWeeks).sort((x, y) => x - y),
-                  };
-                }),
-              }
-            : g
-        )
-      );
-    },
-    []
-  );
-
-  const handleRangeDeselect = useCallback(
-    (groupId: string, activityId: string, startWeek: number, endWeek: number) => {
-      setGroups((prev) =>
-        prev.map((g) =>
-          g.id === groupId
-            ? {
-                ...g,
-                activities: g.activities.map((a) => {
-                  if (a.id !== activityId) return a;
-                  return {
-                    ...a,
-                    selectedWeeks: a.selectedWeeks.filter((w) => w < startWeek || w > endWeek),
-                  };
-                }),
-              }
-            : g
-        )
-      );
-    },
-    []
-  );
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleAddGroup = () => {
     if (newGroupName.trim()) {
-      const color = GROUP_COLORS[colorIndex.current % GROUP_COLORS.length];
-      colorIndex.current++;
-      setGroups((prev) => [
-        ...prev,
-        {
-          id: generateId(),
-          name: newGroupName.trim(),
-          color,
-          isCollapsed: false,
-          activities: [],
-        },
-      ]);
+      addGroup(newGroupName.trim());
       setNewGroupName("");
       setIsAddingGroup(false);
     }
   };
 
-  const handleDeleteGroup = useCallback((groupId: string) => {
-    setGroups((prev) => prev.filter((g) => g.id !== groupId));
-  }, []);
+  const handleExport = () => {
+    downloadProjectAsJson(getProjectFile());
+  };
 
-  const handleRenameGroup = useCallback((groupId: string, name: string) => {
-    setGroups((prev) =>
-      prev.map((g) => (g.id === groupId ? { ...g, name } : g))
-    );
-  }, []);
-
-  const handleRenameActivity = useCallback((groupId: string, activityId: string, name: string) => {
-    setGroups((prev) =>
-      prev.map((g) =>
-        g.id === groupId
-          ? { ...g, activities: g.activities.map((a) => (a.id === activityId ? { ...a, name } : a)) }
-          : g
-      )
-    );
-  }, []);
-
-  const handleChangeGroupColor = useCallback((groupId: string, color: string) => {
-    setGroups((prev) =>
-      prev.map((g) => (g.id === groupId ? { ...g, color } : g))
-    );
-  }, []);
-
-  const handleMoveActivity = useCallback(
-    (activityId: string, fromGroupId: string, toGroupId: string, toIndex: number) => {
-      if (fromGroupId === toGroupId) {
-        // Reorder within same group
-        setGroups((prev) =>
-          prev.map((g) => {
-            if (g.id !== fromGroupId) return g;
-            const actIdx = g.activities.findIndex((a) => a.id === activityId);
-            if (actIdx === -1) return g;
-            const newActivities = [...g.activities];
-            const [moved] = newActivities.splice(actIdx, 1);
-            const insertAt = toIndex > actIdx ? toIndex - 1 : toIndex;
-            newActivities.splice(insertAt, 0, moved);
-            return { ...g, activities: newActivities };
-          })
-        );
-      } else {
-        // Move between groups
-        setGroups((prev) => {
-          let movedActivity: typeof prev[0]["activities"][0] | null = null;
-          const withoutActivity = prev.map((g) => {
-            if (g.id !== fromGroupId) return g;
-            const act = g.activities.find((a) => a.id === activityId);
-            if (act) movedActivity = act;
-            return { ...g, activities: g.activities.filter((a) => a.id !== activityId) };
-          });
-          if (!movedActivity) return prev;
-          return withoutActivity.map((g) => {
-            if (g.id !== toGroupId) return g;
-            const newActivities = [...g.activities];
-            newActivities.splice(toIndex, 0, movedActivity!);
-            return { ...g, activities: newActivities };
-          });
-        });
-      }
-    },
-    []
-  );
-
-  const handleReset = () => {
-    setGroups(initialGroups);
-    const newStart = startOfWeek(new Date(), { weekStartsOn: 1 });
-    setStartDate(newStart);
-    setEndDate(addMonths(newStart, 3));
+  const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      setImportError(null);
+      const projectFile = await readProjectFromFile(file);
+      loadProject(projectFile);
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Error al importar el proyecto";
+      setImportError(message);
+      setTimeout(() => setImportError(null), 4000);
+    }
+    // Reset input so same file can be re-imported
+    e.target.value = "";
   };
 
   const totalActivities = groups.reduce((acc, g) => acc + g.activities.length, 0);
@@ -373,8 +177,38 @@ export default function App() {
               <span className="hidden sm:inline">Diapositiva</span>
             </button>
           </div>
+
+          <div className="h-5 w-px bg-border" />
+
+          {/* Export / Import */}
           <button
-            onClick={handleReset}
+            onClick={handleExport}
+            className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground px-2.5 py-1.5 rounded-md hover:bg-muted transition-colors"
+            title="Exportar proyecto como JSON"
+          >
+            <Download size={13} />
+            <span className="hidden sm:inline">Exportar</span>
+          </button>
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground px-2.5 py-1.5 rounded-md hover:bg-muted transition-colors"
+            title="Importar proyecto desde JSON"
+          >
+            <Upload size={13} />
+            <span className="hidden sm:inline">Importar</span>
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".json"
+            onChange={handleImport}
+            className="hidden"
+          />
+
+          <div className="h-5 w-px bg-border" />
+
+          <button
+            onClick={resetProject}
             className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground px-2.5 py-1.5 rounded-md hover:bg-muted transition-colors"
           >
             <RotateCcw size={13} />
@@ -382,6 +216,13 @@ export default function App() {
           </button>
         </div>
       </div>
+
+      {/* Import error toast */}
+      {importError && (
+        <div className="bg-destructive/10 border-b border-destructive/20 px-4 py-2 text-sm text-destructive shrink-0">
+          {importError}
+        </div>
+      )}
 
       {/* Controls bar — only in editor mode */}
       {viewMode === "editor" && (
@@ -395,13 +236,7 @@ export default function App() {
             onChange={(e) => {
               const date = new Date(e.target.value + "T00:00:00");
               if (!isNaN(date.getTime())) {
-                const newStart = startOfWeek(date, { weekStartsOn: 1 });
-                // If new start >= endDate, push endDate forward keeping same span
-                if (newStart >= endDate) {
-                  const currentSpan = differenceInWeeks(endDate, startDate);
-                  setEndDate(addWeeks(newStart, Math.max(4, currentSpan)));
-                }
-                setStartDate(newStart);
+                setStartDate(date);
               }
             }}
             className="text-sm border border-border rounded-md px-2 py-1 bg-white"
@@ -416,15 +251,7 @@ export default function App() {
             onChange={(e) => {
               const date = new Date(e.target.value + "T00:00:00");
               if (!isNaN(date.getTime())) {
-                // Ensure at least 4 weeks and at most 52 weeks from start
-                const weeks = differenceInWeeks(date, startDate);
-                if (weeks >= 4 && weeks <= 52) {
-                  setEndDate(date);
-                } else if (weeks < 4) {
-                  setEndDate(addWeeks(startDate, 4));
-                } else {
-                  setEndDate(addWeeks(startDate, 52));
-                }
+                setEndDate(date);
               }
             }}
             min={format(addWeeks(startDate, 4), "yyyy-MM-dd")}
@@ -439,14 +266,14 @@ export default function App() {
           <label className="text-xs text-muted-foreground">Semanas:</label>
           <div className="flex items-center border border-border rounded-md overflow-hidden">
             <button
-              onClick={() => setEndDate((w) => addWeeks(startDate, Math.max(4, differenceInWeeks(w, startDate) - 4)))}
+              onClick={() => adjustWeeks(-4)}
               className="px-1.5 py-1 hover:bg-muted transition-colors text-muted-foreground"
             >
               <ChevronLeft size={14} />
             </button>
             <span className="text-sm px-2 min-w-[32px] text-center">{totalWeeks}</span>
             <button
-              onClick={() => setEndDate((w) => addWeeks(startDate, Math.min(52, differenceInWeeks(w, startDate) + 4)))}
+              onClick={() => adjustWeeks(4)}
               className="px-1.5 py-1 hover:bg-muted transition-colors text-muted-foreground"
             >
               <ChevronRight size={14} />
@@ -549,24 +376,24 @@ export default function App() {
               totalWeeks={totalWeeks}
               cellWidth={CELL_WIDTH}
               labelWidth={LABEL_WIDTH}
-              onToggleCollapse={() => handleToggleCollapse(group.id)}
-              onAddActivity={(name) => handleAddActivity(group.id, name)}
-              onDeleteActivity={(activityId) => handleDeleteActivity(group.id, activityId)}
+              onToggleCollapse={() => toggleCollapse(group.id)}
+              onAddActivity={(name) => addActivity(group.id, name)}
+              onDeleteActivity={(activityId) => deleteActivity(group.id, activityId)}
               onToggleWeek={(activityId, weekIndex) =>
-                handleToggleWeek(group.id, activityId, weekIndex)
+                toggleWeek(group.id, activityId, weekIndex)
               }
               onRangeSelect={(activityId, start, end) =>
-                handleRangeSelect(group.id, activityId, start, end)
+                rangeSelect(group.id, activityId, start, end)
               }
               onRangeDeselect={(activityId, start, end) =>
-                handleRangeDeselect(group.id, activityId, start, end)
+                rangeDeselect(group.id, activityId, start, end)
               }
-              onDeleteGroup={() => handleDeleteGroup(group.id)}
-              onRenameGroup={(name) => handleRenameGroup(group.id, name)}
-              onRenameActivity={(activityId, name) => handleRenameActivity(group.id, activityId, name)}
-              onChangeGroupColor={(color) => handleChangeGroupColor(group.id, color)}
+              onDeleteGroup={() => deleteGroup(group.id)}
+              onRenameGroup={(name) => renameGroup(group.id, name)}
+              onRenameActivity={(activityId, name) => renameActivity(group.id, activityId, name)}
+              onChangeGroupColor={(color) => changeGroupColor(group.id, color)}
               onMoveActivity={(activityId, fromGroupId, toGroupId, toIndex) =>
-                handleMoveActivity(activityId, fromGroupId, toGroupId, toIndex)
+                moveActivity(activityId, fromGroupId, toGroupId, toIndex)
               }
             />
           ))}
